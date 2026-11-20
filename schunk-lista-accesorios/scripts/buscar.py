@@ -4,9 +4,9 @@
 Uso:
   python3 buscar.py producto "<ID o denominación>"     # identificar producto(s)
   python3 buscar.py accesorios "<ID o denominación>"   # accesorios compatibles agrupados
-  python3 buscar.py lista --base <ID> [--xlsx ruta.xlsx] [--partidas ruta.json] "ID:cant" ...
+  python3 buscar.py lista --base <ID> [--xlsx ruta.xlsx]   (el Excel se genera siempre) [--partidas ruta.json] "ID:cant" ...
       # tabla final de cotización; --partidas exporta las líneas para la diapositiva de precio
-  python3 buscar.py sistema "<mesa MAGNOS>" --voltaje <220|400/460> [--vero-s] [--xlsx ruta] [--partidas ruta]
+  python3 buscar.py sistema "<mesa, ID o medidas p. ej. 430 x 430>" --voltaje <220|400/460> [--vero-s] [--xlsx ruta] [--partidas ruta]
       # MAGNOS: arma mesa + control + cable + botonera + extensiones de polo
 
 Los datos viven en ../data/productos.csv y ../data/compatibilidad.csv.
@@ -157,6 +157,15 @@ def _descripcion(p):
     return d
 
 
+def _carpeta_salida():
+    """Carpeta del Excel si no se pasa --xlsx: $SCHUNK_SALIDA, /mnt/user-data/outputs o ./salida."""
+    if os.environ.get('SCHUNK_SALIDA'):
+        return os.environ['SCHUNK_SALIDA']
+    if os.path.isdir('/mnt/user-data/outputs'):
+        return '/mnt/user-data/outputs'
+    return os.path.join(os.getcwd(), 'salida')
+
+
 def _xlsx(filas, ruta):
     from openpyxl import Workbook
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
@@ -257,9 +266,13 @@ def cmd_lista(items):
         print(f'| {i} | {cant} | {desc} | {uso} | {pu} | {tot} |')
     gt = sum(pr * int(c) for _, c, _, _, pr in filas if pr and str(c).isdigit())
     print(f"|  |  |  |  | **Grand total (USD):** | {f'${gt:,.2f}' if gt else ''} |")
-    if ruta_xlsx:
+    if filas:
+        if not ruta_xlsx:
+            nombre = re.sub(r'[^\w\-]+', '_', (base or BY_ID[filas[0][0]])['denominacion']).strip('_')
+            ruta_xlsx = os.path.join(_carpeta_salida(), f'Lista_{nombre}.xlsx')
+        os.makedirs(os.path.dirname(os.path.abspath(ruta_xlsx)), exist_ok=True)
         _xlsx(filas, ruta_xlsx)
-        print(f'\nExcel generado: {ruta_xlsx}')
+        print(f'\nExcel generado (entregarlo siempre al usuario): {os.path.abspath(ruta_xlsx)}')
     if ruta_json:
         import json
         partidas = [{'cantidad': int(c) if str(c).isdigit() else c, 'id': i, 'descripcion': d,
@@ -284,6 +297,81 @@ def _norm_volt(v):
     return None
 
 
+def _medidas(txt):
+    """'430 x 430', '430x430', '430 × 430' → ('430', '430') en orden mayor-menor, o None."""
+    m = re.search(r'(\d{3,4})\s*[xX×*]\s*(\d{3,4})', txt)
+    if not m:
+        return None
+    a, b = sorted((int(m.group(1)), int(m.group(2))), reverse=True)
+    return str(a), str(b)
+
+
+def _buscar_mesa(q, volt):
+    """Encuentra la mesa por ID, denominación completa o por medidas (+ serie opcional).
+    Solo declara NO EXISTE después de buscar por medidas en todas las mesas del catálogo."""
+    mesas = [p for p in PROD if p['tipo'] == 'mesa']
+    vol = lambda p: _datos(p).get('voltaje')
+    # 1) ID directo
+    if re.fullmatch(r'\d{7,8}', q.strip()):
+        p = BY_ID.get(q.strip())
+        if not p or p['tipo'] != 'mesa':
+            print(f'NO ENCONTRADO: el ID {q} no es una mesa MAGNOS en los datos. Verifica el ID.')
+            return None
+        if vol(p) != volt:
+            print(f'AVISO: el ID {q} ({p["denominacion"]}) es de {vol(p)} V, no de {volt} V. Confírmalo con el usuario.')
+            return None
+        return p
+    # 2) Denominación completa
+    base = lambda p: re.sub(r'\s*220V$', '', p['denominacion'])
+    mismo = [p for p in mesas if norm(base(p)) == norm(q)]
+    if mismo:
+        m = [p for p in mismo if vol(p) == volt]
+        if m:
+            return m[0]
+        otros = sorted({vol(p) for p in mismo})
+        print(f'NO EXISTE: la mesa "{q}" no existe a {volt} V; sí existe a {", ".join(v + " V" for v in otros)}.')
+        print('  Avísalo al usuario. Requerimientos especiales: clampingsolution@mx.schunk.com')
+        return None
+    # 3) Por medidas, con filtros opcionales de serie (A1/A2, 050/070, V)
+    med = _medidas(q)
+    if not med:
+        print(f'SIN MEDIDAS: no se reconoce "{q}". Pide la denominación, el ID o las medidas (p. ej. 430 x 430).')
+        return None
+    tam = f'{med[0]} x {med[1]}'
+    filtro = re.sub(r'\d{3,4}\s*[xX×*]\s*\d{3,4}|\b\d{3}\s*V\b', '', q).strip()
+    alcance = f'serie {filtro}' if filtro else 'todas las series'
+    cand = [p for p in mesas if re.search(rf'\b{med[0]} x {med[1]}\b', p['denominacion'])]
+    nq = norm(re.sub(r'\d{3,4}\s*[xX×*]\s*\d{3,4}', '', q))
+    for tok in ('A1', 'A2', '050', '070'):
+        if tok in nq:
+            cand = [p for p in cand if tok in norm(p['denominacion'])]
+    if 'MFRS2V' in nq or 'VEROS' in nq:
+        cand = [p for p in cand if '-V-' in p['denominacion']]
+    m = [p for p in cand if vol(p) == volt]
+    if len(m) == 1:
+        print(f'SELECCIONADA POR MEDIDAS: {tam} a {volt} V → {m[0]["id"]} {m[0]["denominacion"]} (única opción).')
+        return m[0]
+    if len(m) > 1:
+        print(f'VARIAS OPCIONES: {tam} a {volt} V existe en {len(m)} mesas. Muestra estas opciones y pregunta cuál:')
+        for p in m:
+            d = _datos(p)
+            print(f'  {p["id"]}  {p["denominacion"]} | polo {d["polo"]} | {d["polos"]} polos | '
+                  f'altura {d["altura"]} | fuerza: {p["descripcion"].split("fuerza máx. de sujeción ")[-1]}')
+        return None
+    if cand:
+        otros = sorted({vol(p) for p in cand})
+        print(f'NO EXISTE: no hay mesa {tam} a {volt} V (buscado por medidas en {alcance}). '
+              f'Sí existe a: {", ".join(v + " V" for v in otros)}.')
+    else:
+        print(f'NO EXISTE: ninguna mesa MAGNOS mide {tam} en ningún voltaje (buscado por medidas en {alcance}).')
+    if filtro:
+        otras = [p for p in mesas if re.search(rf'\b{med[0]} x {med[1]}\b', p['denominacion']) and vol(p) == volt]
+        for p in otras:
+            print(f'  A {volt} V sí existe en otra serie: {p["id"]} {p["denominacion"]}. Ofrécela como alternativa.')
+    print('  Avísalo al usuario. Requerimientos especiales: clampingsolution@mx.schunk.com')
+    return None
+
+
 def cmd_sistema(args):
     """sistema "<denominación de la mesa>" --voltaje <220|400/460> [--xlsx ruta] [--partidas ruta]"""
     extra = []
@@ -300,20 +388,10 @@ def cmd_sistema(args):
     if not volt:
         print('FALTA VOLTAJE: el usuario debe indicar 220 V o 400/460 V; no hay valor por defecto. Pregúntalo.')
         return
-    mesas = [p for p in PROD if p['tipo'] == 'mesa']
-    base = lambda p: re.sub(r'\s*220V$', '', p['denominacion'])
-    mismo = [p for p in mesas if norm(base(p)) == norm(q)]
-    m = [p for p in mismo if _datos(p).get('voltaje') == volt]
-    if not m:
-        otros = sorted({_datos(p)['voltaje'] for p in mismo})
-        print(f'NO EXISTE: no hay ID para la mesa "{q}" a {volt} V. Avísalo de inmediato al usuario.')
-        if otros:
-            print(f'  Esa mesa sí existe a: {", ".join(v + " V" for v in otros)}.')
-        else:
-            print('  Esa denominación no existe en ningún voltaje. Revisa serie (A1/A2, 050/070, V) y tamaño.')
-        print('  Para requerimientos especiales: clampingsolution@mx.schunk.com')
+    mesa = _buscar_mesa(q, volt)
+    if not mesa:
         return
-    mesa = m[0]; d = _datos(mesa)
+    d = _datos(mesa)
     can, pines, polos, polo = int(d['canales']), int(d['pines']), int(d['polos']), d['polo']
     # 1) Unidad de control: mismo voltaje y canales
     keh = [p for p in PROD if p['categoria'] == 'unidad_control'

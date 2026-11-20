@@ -1,6 +1,6 @@
 # Skills SCHUNK México
 
-Versión actual: **1.0** (ver `CHANGELOG.md`)
+Versión actual: **1.1** (ver `CHANGELOG.md`)
 
 ## schunk-lista-accesorios
 
@@ -27,6 +27,12 @@ Requiere Python 3 y `openpyxl` (`pip install openpyxl`).
 ```bash
 git clone https://github.com/<usuario>/<repo>.git
 cp -r <repo>/schunk-lista-accesorios <carpeta-de-skills>/
+```
+
+## Probar
+
+```bash
+python3 schunk-lista-accesorios/scripts/probar.py
 ```
 
 ## Actualizar

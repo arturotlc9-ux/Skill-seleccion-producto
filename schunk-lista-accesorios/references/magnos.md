@@ -6,8 +6,12 @@ ambos archivos.
 
 ## Cómo se pide
 
-El usuario siempre da la **denominación exacta de la mesa** y el **voltaje**:
+El usuario da el **voltaje** y la mesa de cualquiera de estas formas; el script las resuelve
+todas, así que pásale el texto tal cual:
 
+- Solo medidas: `430 x 430`, `430x430` (con serie opcional: `A2-050 430 x 430`).
+- ID: `1663682`.
+- Denominación del catálogo:
 - Mesas 400/460 V: `MFRS2-A2-050 600 x 430` (denominación del catálogo).
 - Mesas 220 V: el voltaje va en el nombre → `MFRS2-A2-050 600 x 430 220V`.
 - Con interfaz VERO-S: `MFRS2-V-A1-050 …` (el usuario la pide "con interfaz VERO-S").
@@ -16,8 +20,14 @@ Series: A1-050, V-A1-050, A2-050 (polo 50) y A1-070, A2-070 (polo 70); además, 
 generación anterior MFRS (ver "Notas de datos"). A1 = altura 66 mm,
 A2 = altura 86 mm (más fuerza con cámara de aire grande). 220 V solo existe en A2-050, en 8 tamaños.
 
+Respuestas del script:
+- `SELECCIONADA POR MEDIDAS` → solo hay una mesa con esas medidas y voltaje; continúa con ella.
+- `VARIAS OPCIONES` → muestra la lista (ID, serie, polo, polos, altura, fuerza) y pregunta.
+- `NO EXISTE` → la búsqueda ya revisó todas las mesas por medidas; dilo y ofrece la alternativa
+  que indique el script.
+
 **No hay voltaje por defecto.** Si falta, pregúntalo. Si la combinación no existe, dilo de
-inmediato (el script lo detecta e indica en qué voltaje sí existe) y remite a
+inmediato (solo cuando el script responda `NO EXISTE`) y remite a
 clampingsolution@mx.schunk.com para requerimientos especiales.
 
 ## Sistema completo (siempre)

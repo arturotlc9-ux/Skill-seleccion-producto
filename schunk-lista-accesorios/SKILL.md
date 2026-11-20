@@ -2,7 +2,7 @@
 name: "schunk-lista-accesorios"
 description: Arma listas ID/Qty/Descripción de productos SCHUNK (prensas, mesas magnéticas, VERO-S) con sus accesorios compatibles. Úsala siempre que pidan números de parte o accesorios SCHUNK.
 metadata:
-  version: "1.0"
+  version: "1.1"
 ---
 
 # Lista de accesorios SCHUNK
@@ -14,6 +14,21 @@ usando solo datos verificados del catálogo.
 En una cotización, un ID equivocado cuesta más que uno faltante. Por eso todos los IDs salen del
 script; nunca se escriben de memoria ni se deducen por patrón (los IDs de un mismo tipo no son
 consecutivos entre tamaños).
+
+## Reglas obligatorias (aplican con cualquier modelo de IA)
+
+1. **Todo sale del script `scripts/buscar.py`.** No leas los CSV ni las referencias para
+   armar la lista a mano, ni para concluir que algo no existe: los CSV tienen cientos de filas y
+   una lectura parcial lleva a errores.
+2. **"No existe" solo si el script lo dice** con la línea `NO EXISTE`. Si el script no se pudo
+   ejecutar, di que no pudiste verificarlo; nunca concluyas que el producto no existe.
+3. **Si el usuario da un ID, búscalo por ID** (`producto <ID>` o, en MAGNOS, `sistema <ID>`) y
+   usa ese registro.
+4. **El Excel es obligatorio en cada lista.** El script lo genera siempre (con `--xlsx` o, si se
+   omite, en `$SCHUNK_SALIDA`, `/mnt/user-data/outputs` o `./salida`). Entrega siempre el archivo
+   que indica la línea `Excel generado`. Si no puedes ejecutar Python, dilo y no entregues una
+   lista armada a mano.
+5. Si el script responde `VARIAS OPCIONES`, muestra las opciones con su ID y pregunta; no elijas tú.
 
 ## Familias cargadas
 
@@ -32,7 +47,9 @@ Para agregar una familia nueva, sigue `references/agregar-familia.md`.
 ## Flujo
 
 **Mesas magnéticas MAGNOS:** el flujo es distinto. Lee `references/magnos.md` y usa
-`scripts/buscar.py sistema "<mesa>" --voltaje <220|400/460> --xlsx …`, que arma el sistema completo
+`scripts/buscar.py sistema "<mesa>" --voltaje <220|400/460> --xlsx …`, donde `<mesa>` puede ser la
+denominación, el ID o solo las medidas (`"430 x 430"`, con serie opcional `"A2-050 430 x 430"`).
+El script arma el sistema completo
 (mesa, control, cable, botonera y extensiones de polo) y detecta combinaciones inexistentes.
 Si falta el voltaje o la mesa no existe, dilo antes de cualquier otra cosa. Si piden una mesa
 MFRS2-V "con VERO-S", agrega `--vero-s`.
@@ -126,6 +143,12 @@ en la diapositiva.
   → 2 por prensa. Las mordazas W-38 del péndulo van por pieza (4). El script agrega la unidad
   ("set de 2 piezas", "set de 4 piezas", "juego") a la descripción cuando aplica.
 - Si el usuario da cantidades, respétalas.
+
+## Pruebas
+
+Después de cualquier cambio en `data/` o en el script, ejecuta `python3 scripts/probar.py`.
+Si un caso falla, corrígelo antes de publicar la versión. Cuando aparezca un error nuevo con un
+caso real, agrégalo a `CASOS` en ese archivo.
 
 ## Reglas generales
 
